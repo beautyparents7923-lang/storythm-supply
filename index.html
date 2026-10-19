@@ -143,7 +143,8 @@ input[type=checkbox].ck{width:20px;height:20px;margin:0;accent-color:var(--accen
 .x{border:0;background:var(--sunk);border-radius:999px;width:36px;height:36px;flex:none;font-size:18px}
 .photo{position:relative;aspect-ratio:4/3;max-width:100%;border-radius:12px;background:var(--sunk);overflow:hidden;display:grid;place-items:center;color:var(--muted);font-size:13px}
 .photo img{width:100%;height:100%;object-fit:cover}
-.photo .pbtn{position:absolute;right:10px;bottom:10px}
+.photo .pbtns{position:absolute;right:10px;bottom:10px;display:flex;gap:6px}
+.photo .pbtns .btn{padding:9px 12px;font-size:13.5px}
 .big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .big .qty{font-size:40px}
 .move{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;background:var(--sunk)}
@@ -179,6 +180,7 @@ summary{cursor:pointer;font-weight:700;padding:4px 0}
 
 <div id="app"></div>
 <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+<input type="file" id="photoPick" accept="image/*" hidden>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
@@ -419,7 +421,7 @@ function openItem(id){
   S.open=id;const it=S.items.find(i=>i.id===id);if(!it)return;
   const st=status(it),url=photoURL(it.photo);
   const photo=h("div",{class:"photo"},url?h("img",{src:url,alt:it.name+" 사진"}):h("span",{text:"사진 없음"}));
-  photo.append(h("button",{class:"btn pbtn",onclick:()=>pickPhoto(it)},url?"사진 다시 찍기":"사진 찍기"));
+  photo.append(h("div",{class:"pbtns"},h("button",{class:"btn",onclick:()=>pickPhoto(it,"album")},"앨범에서 선택"),h("button",{class:"btn primary",onclick:()=>pickPhoto(it,"camera")},url?"다시 찍기":"사진 찍기")));
   const big=h("div",{class:"big"},h("span",{class:"qty"},it.qty==null?"–":String(it.qty),h("small",{text:it.unit||""})),h("span",{class:"pill "+st,text:SLBL[st]}),h("span",{class:"meta",text:it.min!=null?`최소 ${it.min}${it.unit||""}`:"최소 수량 미정"}));
   const info=h("div",{class:"meta",text:[it.kind,it.cat,(it.camps||[]).join("·"),it.loc&&("보관 "+it.loc),it.acquired&&("취득 "+it.acquired),it.vendor&&("구매처 "+it.vendor)].filter(Boolean).join("  ·  ")});
   const body=[photo,big,info];
@@ -502,13 +504,13 @@ function writeFail(e){
 
 /* ---------- photos ---------- */
 let photoTarget=null;
-function pickPhoto(it){photoTarget=it;const inp=$("#photoInput");inp.value="";inp.click()}
+function pickPhoto(it,src){photoTarget=it;const inp=$(src==="album"?"#photoPick":"#photoInput");inp.value="";inp.click()}
 async function shrink(file){
   try{const bmp=await createImageBitmap(file);const max=1280,s=Math.min(1,max/Math.max(bmp.width,bmp.height));
     const c=document.createElement("canvas");c.width=Math.round(bmp.width*s);c.height=Math.round(bmp.height*s);c.getContext("2d").drawImage(bmp,0,0,c.width,c.height);
     return await new Promise(r=>c.toBlob(b=>r(b||file),"image/jpeg",.82));}catch(e){return file}
 }
-$("#photoInput").addEventListener("change",async e=>{
+for(const id of ["#photoInput","#photoPick"])$(id).addEventListener("change",async e=>{
   const file=e.target.files&&e.target.files[0];const it=photoTarget;if(!file||!it)return;
   toast("사진을 올리는 중이에요…");
   try{const blob=await shrink(file);const path=`${it.id}/${Date.now()}.jpg`;
