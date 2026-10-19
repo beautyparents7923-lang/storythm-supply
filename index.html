@@ -358,8 +358,8 @@ function logRow(l,withName){
   const cls=l.type==="in"?"in":l.type==="out"?"out":"adj";const sign=l.type==="in"?"+":l.type==="out"?"−":"=";
   return h("div",{class:"row"},
     h("span",{class:"dot",style:`background:var(--${cls==="in"?"ok":cls==="out"?"out":"unk"})`}),
-    h("span",{class:"t"},h("b",{text:withName?(l.item_name||"(삭제된 물품)"):({in:"입고",out:"출고",adjust:"실사"}[l.type])}),
-      h("span",{text:`${fmtDate(l.at)}${withName?" · "+({in:"입고",out:"출고",adjust:"실사"}[l.type]||""):""}${l.camp?" · "+l.camp:""}${l.memo?" · "+l.memo:""} · ${l.by_name||"누군가"}`})),
+    h("span",{class:"t"},h("b",{text:withName?(l.item_name||"(삭제된 물품)"):({in:"입고",out:"출고",adjust:"실제 수량"}[l.type])}),
+      h("span",{text:`${fmtDate(l.at)}${withName?" · "+({in:"입고",out:"출고",adjust:"실제 수량"}[l.type]||""):""}${l.camp?" · "+l.camp:""}${l.memo?" · "+l.memo:""} · ${l.by_name||"누군가"}`})),
     h("span",{class:"delta "+cls,text:l.type==="adjust"?`${sign}${l.qty_after}`:`${sign}${Math.abs(l.delta)}`}));
 }
 function viewLog(){
@@ -429,7 +429,7 @@ function openItem(id){
   const memo=h("input",{id:"m-memo",placeholder:"메모 (선택)"});
   const camp=h("select",{id:"m-camp","aria-label":"사용 캠프"},h("option",{value:""},"캠프 (선택)"),...CAMPS.filter(c=>c!=="공통").map(c=>h("option",{value:c},c)));
   const seg=h("div",{class:"seg",role:"group","aria-label":"기록 종류"});const go=h("button",{class:"btn primary"});
-  const drawSeg=()=>{seg.replaceChildren(...[["out","출고"],["in","입고"],["adjust","실사"]].map(([k,l])=>h("button",{type:"button","aria-pressed":String(mode===k),onclick:()=>{mode=k;if(k==="adjust")amt.value=it.qty??0;else if(amt.value==="")amt.value=1;drawSeg()}},l)));
+  const drawSeg=()=>{seg.replaceChildren(...[["out","출고"],["in","입고"],["adjust","실제 수량"]].map(([k,l])=>h("button",{type:"button","aria-pressed":String(mode===k),onclick:()=>{mode=k;if(k==="adjust")amt.value=it.qty??0;else if(amt.value==="")amt.value=1;drawSeg()}},l)));
     go.textContent=mode==="out"?"출고 기록":mode==="in"?"입고 기록":"수량 맞추기"};
   drawSeg();
   const step=n=>{amt.value=Math.max(0,(Number(amt.value)||0)+n)};
@@ -476,7 +476,7 @@ async function saveQty(it,val,el){
   const n=val===""?null:Math.max(0,Math.floor(Number(val)||0));
   const cur=it.qty==null?null:Number(it.qty);if(n===cur)return;
   try{await updateItem(it.id,{qty:n});
-    if(n!=null)await addLog({item_id:it.id,item_name:it.name,type:"adjust",delta:n-(cur||0),qty_after:n,memo:"목록에서 실사"});
+    if(n!=null)await addLog({item_id:it.id,item_name:it.name,type:"adjust",delta:n-(cur||0),qty_after:n,memo:"목록에서 입력"});
     it.qty=n;toast(n==null?"수량을 미확인으로 돌렸어요":`${it.name} ${n}${it.unit||""}`);reload().catch(()=>{});
   }catch(e){el.value=cur==null?"":String(cur);writeFail(e)}
 }
