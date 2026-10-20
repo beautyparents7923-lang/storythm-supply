@@ -125,7 +125,9 @@ input[type=checkbox].ck{width:20px;height:20px;margin:0;accent-color:var(--accen
 .row .t b{display:block;font-size:14.5px;overflow-wrap:anywhere}
 .row .t span{font-size:12px;color:var(--muted)}
 .delta{font-family:var(--f-mono);font-weight:600;font-variant-numeric:tabular-nums}
-.delta.in{color:var(--ok)} .delta.out{color:var(--out)} .delta.adj{color:var(--muted)}
+.delta.in{color:var(--ok)} .delta.out{color:var(--out)} .delta.adj{color:var(--muted)} .delta.del{color:var(--out)} .delta.res{color:var(--ok)}
+.trash .row .btn{padding:6px 10px;font-size:13px}
+.trash .row .acts{display:flex;gap:6px}
 .dot{width:10px;height:10px;border-radius:50%}
 .sect-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .sect-h h2{margin:0;font-family:var(--f-display);font-weight:400;font-size:20px}
@@ -191,7 +193,7 @@ const CATS=["문구","스티커","만들기 재료","인쇄·용지","운영 비
 const CAMPS=["공통","히스토리즘","Storythm3.0"];
 const TABS=["list","stock","buy","log"];
 const CFG=window.SUPPLY_CONFIG||{};
-const S={sb:null,session:null,who:"",items:[],logs:[],tab:"list",q:"",cat:"전체",camp:"전체",sort:"cat",open:null,loaded:false,sel:new Set(),online:navigator.onLine};
+const S={sb:null,session:null,who:"",items:[],trash:[],logs:[],tab:"list",q:"",cat:"전체",camp:"전체",sort:"cat",open:null,loaded:false,sel:new Set(),online:navigator.onLine};
 
 const $=s=>document.querySelector(s);
 function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(v==null||v===false)continue;if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(k==="text")e.textContent=v;else e.setAttribute(k,v===true?"":v)}for(const k of kids.flat()){if(k==null||k===false)continue;e.append(k instanceof Node?k:document.createTextNode(String(k)))}return e}
@@ -234,7 +236,7 @@ function shell(){
       h("div",{class:"stats",id:"stats"}),
       h("nav",{class:"tabs",role:"tablist"},
         h("button",{role:"tab",id:"tab-list"},"목록"),h("button",{role:"tab",id:"tab-stock"},"카드"),
-        h("button",{role:"tab",id:"tab-buy"},"구매 필요",h("span",{class:"n",id:"buyN"})),h("button",{role:"tab",id:"tab-log"},"기록")))),
+        h("button",{role:"tab",id:"tab-buy"},"구매 필요",h("span",{class:"n",id:"buyN"})),h("button",{role:"tab",id:"tab-log"},"기록",h("span",{class:"n",id:"trashN"}))))),
     h("main",{},h("div",{class:"wrap",id:"view"},h("div",{class:"notice",text:"창고 목록을 불러오는 중이에요…"}))),
     h("button",{class:"fab",id:"fab",hidden:true,onclick:newItem},"+ 물품 추가"),
     h("div",{id:"sheetRoot"}));
@@ -257,6 +259,7 @@ function renderStats(){
     h("span",{class:"stat out"},"없음 ",h("b",{text:out})),
     h("span",{class:"stat"},"미확인 ",h("b",{text:unk})));
   $("#buyN").textContent=(low+out)?String(low+out):"";
+  const tn=$("#trashN");if(tn)tn.textContent=S.trash.length?"🗑"+S.trash.length:"";
 }
 function render(){
   if(!$("#view"))shell();
@@ -325,8 +328,8 @@ function listRow(it){
   const qty=h("input",{type:"number",inputmode:"numeric",min:"0",placeholder:"?",value:it.qty==null?"":String(it.qty),"aria-label":it.name+" 수량",
     onkeydown:e=>{if(e.key==="Enter")e.target.blur()},onchange:e=>saveQty(it,e.target.value,e.target),onblur:afterEdit});
   let armed=false;const del=h("button",{class:"ib del",type:"button","aria-label":it.name+" 삭제",onclick:async()=>{
-    if(!armed){armed=true;del.dataset.armed="1";del.textContent="!";toast("한 번 더 누르면 삭제돼요");setTimeout(()=>{armed=false;delete del.dataset.armed;del.textContent="✕"},3500);return}
-    del.disabled=true;try{await deleteItems([it.id]);toast(`‘${it.name}’을 삭제했어요`)}catch(e){del.disabled=false;writeFail(e)}}},"✕");
+    if(!armed){armed=true;del.dataset.armed="1";del.textContent="!";toast("한 번 더 누르면 휴지통으로 가요");setTimeout(()=>{armed=false;delete del.dataset.armed;del.textContent="✕"},3500);return}
+    del.disabled=true;try{await deleteItems([it.id]);toast(`‘${it.name}’을 휴지통으로 보냈어요`)}catch(e){del.disabled=false;writeFail(e)}}},"✕");
   const row=h("div",{class:"lrow s-"+st+(S.sel.has(it.id)?" sel":"")+(it.dispose?" dispose":""),"data-id":it.id},ck,thumb,h("div",{class:"ln"},name,sub),h("div",{class:"lq"},qty,h("small",{text:it.unit||""})),del);
   return row;
 }
@@ -370,17 +373,34 @@ async function copyList(need){
 
 /* log */
 function logRow(l,withName){
-  const cls=l.type==="in"?"in":l.type==="out"?"out":"adj";const sign=l.type==="in"?"+":l.type==="out"?"−":"=";
+  const cls={in:"in",out:"out",adjust:"adj",delete:"del",restore:"res"}[l.type]||"adj";const sign=l.type==="in"?"+":l.type==="out"?"−":"=";
+  const dtxt=l.type==="delete"?"삭제":l.type==="restore"?"복원":l.type==="adjust"?`${sign}${l.qty_after}`:`${sign}${Math.abs(l.delta)}`;
   return h("div",{class:"row"},
-    h("span",{class:"dot",style:`background:var(--${cls==="in"?"ok":cls==="out"?"out":"unk"})`}),
-    h("span",{class:"t"},h("b",{text:withName?(l.item_name||"(삭제된 물품)"):({in:"입고",out:"출고",adjust:"실제 수량"}[l.type])}),
-      h("span",{text:`${fmtDate(l.at)}${withName?" · "+({in:"입고",out:"출고",adjust:"실제 수량"}[l.type]||""):""}${l.camp?" · "+l.camp:""}${l.memo?" · "+l.memo:""} · ${l.by_name||"누군가"}`})),
-    h("span",{class:"delta "+cls,text:l.type==="adjust"?`${sign}${l.qty_after}`:`${sign}${Math.abs(l.delta)}`}));
+    h("span",{class:"dot",style:`background:var(--${cls==="in"||cls==="res"?"ok":cls==="out"||cls==="del"?"out":"unk"})`}),
+    h("span",{class:"t"},h("b",{text:withName?(l.item_name||"(삭제된 물품)"):(TLBL[l.type]||l.type)}),
+      h("span",{text:`${fmtDate(l.at)}${withName?" · "+(TLBL[l.type]||""):""}${l.camp?" · "+l.camp:""}${l.memo?" · "+l.memo:""} · ${l.by_name||"누군가"}`})),
+    h("span",{class:"delta "+cls,text:dtxt}));
+}
+const TLBL={in:"입고",out:"출고",adjust:"실제 수량",delete:"삭제",restore:"복원"};
+function trashRow(it){
+  let armed=false;
+  const res=h("button",{class:"btn primary",type:"button",onclick:async()=>{res.disabled=true;try{await restoreItem(it);toast(`‘${it.name}’을 되돌렸어요`)}catch(e){res.disabled=false;writeFail(e)}}},"복원");
+  const purge=h("button",{class:"btn danger",type:"button",onclick:async()=>{
+    if(!armed){armed=true;purge.textContent="정말 영구 삭제?";setTimeout(()=>{armed=false;purge.textContent="영구 삭제"},4000);return}
+    purge.disabled=true;try{await purgeItem(it);toast(`‘${it.name}’을 완전히 지웠어요`)}catch(e){purge.disabled=false;writeFail(e)}}},"영구 삭제");
+  return h("div",{class:"row"},h("span",{class:"dot",style:"background:var(--out)"}),
+    h("span",{class:"t"},h("b",{text:it.name}),h("span",{text:`${fmtDate(it.deleted_at)} · ${it.deleted_by||"누군가"}가 삭제 · ${it.qty==null?"수량 미확인":it.qty+(it.unit||"")}${it.loc?" · "+it.loc:""}`})),
+    h("span",{class:"acts"},res,purge));
+}
+function viewTrash(){
+  if(!S.trash.length)return[];
+  return[h("div",{class:"sect-h"},h("h2",{text:"휴지통"}),h("span",{class:"meta",text:S.trash.length+"개 · 복원하면 목록으로 돌아와요"})),
+    h("div",{class:"list trash"},...S.trash.map(trashRow)),h("div",{style:"height:18px"})];
 }
 function viewLog(){
   const head=h("div",{class:"sect-h"},h("h2",{text:"입출고 기록"}),h("span",{class:"meta",text:"최근 200건"}));
-  if(!S.logs.length)return[head,h("div",{class:"empty"},h("h3",{text:"아직 기록이 없어요"}),h("div",{text:"수량을 바꾸면 여기에 쌓여요."}))];
-  return[head,h("div",{class:"list"},...S.logs.map(l=>logRow(l,true)))];
+  if(!S.logs.length)return[...viewTrash(),head,h("div",{class:"empty"},h("h3",{text:"아직 기록이 없어요"}),h("div",{text:"수량을 바꾸면 여기에 쌓여요."}))];
+  return[...viewTrash(),head,h("div",{class:"list"},...S.logs.map(l=>logRow(l,true)))];
 }
 
 /* ---------- sheet ---------- */
@@ -464,7 +484,7 @@ function openItem(id){
     try{await updateItem(it.id,d);await reload();toast("정보를 저장했어요")}catch(e){writeFail(e)}finally{saveInfo.disabled=false}}},"정보 저장");
   let armed=false;const del=h("button",{class:"btn danger",onclick:async()=>{
     if(!armed){armed=true;del.textContent="한 번 더 누르면 삭제";setTimeout(()=>{armed=false;del.textContent="물품 삭제"},4000);return}
-    try{await deleteItems([it.id]);closeFn();toast("물품을 삭제했어요")}catch(e){writeFail(e)}}},"물품 삭제");
+    try{await deleteItems([it.id]);closeFn();toast("휴지통으로 보냈어요")}catch(e){writeFail(e)}}},"물품 삭제");
   body.push(h("details",{},h("summary",{text:"물품 정보 고치기"}),h("div",{style:"display:flex;flex-direction:column;gap:12px;padding-top:10px"},box,h("div",{class:"actions"},del,saveInfo))));
   const mine=S.logs.filter(l=>l.item_id===it.id).slice(0,8);
   if(mine.length)body.push(h("details",{open:true},h("summary",{text:"최근 기록"}),h("div",{class:"list",style:"margin-top:8px"},...mine.map(l=>logRow(l,false)))));
@@ -478,7 +498,7 @@ async function reload(){
     S.sb.from("items").select("*").order("name"),
     S.sb.from("logs").select("*").order("at",{ascending:false}).limit(200)]);
   if(a.error)throw a.error;if(b.error)throw b.error;
-  S.items=a.data||[];S.logs=b.data||[];S.loaded=true;rerender();
+  const all=a.data||[];S.items=all.filter(i=>!i.deleted_at);S.trash=all.filter(i=>!!i.deleted_at).sort((x,y)=>Date.parse(y.deleted_at)-Date.parse(x.deleted_at));S.logs=b.data||[];S.loaded=true;rerender();
 }
 async function updateItem(id,patch){const {error}=await S.sb.from("items").update({...patch,updated_at:now(),updated_by:S.who}).eq("id",id);if(error)throw error}
 async function addLog(d){const {error}=await S.sb.from("logs").insert({...d,camp:d.camp||"",memo:d.memo||"",at:now(),by_name:S.who});if(error)throw error}
@@ -497,8 +517,19 @@ async function saveQty(it,val,el){
 }
 async function deleteItems(ids){
   for(const id of ids){const it=S.items.find(i=>i.id===id);if(!it)continue;
-    const {error}=await S.sb.from("items").delete().eq("id",id);if(error)throw error;S.sel.delete(id);
-    if(it.photo){try{await S.sb.storage.from(CFG.bucket||"photos").remove([it.photo])}catch(e){}}}
+    const {error}=await S.sb.from("items").update({deleted_at:now(),deleted_by:S.who,updated_at:now(),updated_by:S.who}).eq("id",id);if(error)throw error;S.sel.delete(id);
+    await addLog({item_id:id,item_name:it.name,type:"delete",delta:0,qty_after:it.qty,memo:"휴지통으로 이동"});}
+  await reload();
+}
+async function restoreItem(it){
+  const {error}=await S.sb.from("items").update({deleted_at:null,deleted_by:"",updated_at:now(),updated_by:S.who}).eq("id",it.id);if(error)throw error;
+  await addLog({item_id:it.id,item_name:it.name,type:"restore",delta:0,qty_after:it.qty,memo:"휴지통에서 복원"});
+  await reload();
+}
+async function purgeItem(it){
+  const {error}=await S.sb.from("items").delete().eq("id",it.id);if(error)throw error;
+  if(it.photo){try{await S.sb.storage.from(CFG.bucket||"photos").remove([it.photo])}catch(e){}}
+  await addLog({item_id:null,item_name:it.name,type:"delete",delta:0,qty_after:it.qty,memo:"휴지통에서 영구 삭제"});
   await reload();
 }
 let bulkArmed=false;
@@ -506,7 +537,7 @@ async function bulkDelete(btn){
   const ids=filtered().map(i=>i.id).filter(id=>S.sel.has(id));if(!ids.length)return;
   if(!bulkArmed){bulkArmed=true;btn.textContent=`정말 ${ids.length}개 삭제?`;setTimeout(()=>{bulkArmed=false;drawBulk(filtered())},4000);return}
   bulkArmed=false;btn.disabled=true;btn.textContent="삭제하는 중…";
-  try{await deleteItems(ids);toast(`${ids.length}개를 삭제했어요`)}catch(e){writeFail(e);drawList()}
+  try{await deleteItems(ids);toast(`${ids.length}개를 휴지통으로 보냈어요`)}catch(e){writeFail(e);drawList()}
 }
 function writeFail(e){
   const m=(e&&e.message)||"";
