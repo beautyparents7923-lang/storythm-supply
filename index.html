@@ -65,7 +65,9 @@ main .wrap{padding-block:14px 120px;display:flex;flex-direction:column;gap:14px}
 .tools{display:flex;flex-direction:column;gap:10px}
 .search{display:flex;gap:8px}
 .search input{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--surface)}
-.search select{padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface);max-width:40%}
+.search select{padding:10px 8px;border-radius:10px;border:1px solid var(--line);background:var(--surface);max-width:34%}
+.search select.srt{max-width:30%}
+.ln small .when{color:var(--accent,#1f6f5c);font-weight:600}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
 .chip{flex:none;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);font-size:13px;color:var(--muted)}
 .chip[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
@@ -189,7 +191,7 @@ const CATS=["문구","스티커","만들기 재료","인쇄·용지","운영 비
 const CAMPS=["공통","히스토리즘","Storythm3.0"];
 const TABS=["list","stock","buy","log"];
 const CFG=window.SUPPLY_CONFIG||{};
-const S={sb:null,session:null,who:"",items:[],logs:[],tab:"list",q:"",cat:"전체",camp:"전체",open:null,loaded:false,sel:new Set(),online:navigator.onLine};
+const S={sb:null,session:null,who:"",items:[],logs:[],tab:"list",q:"",cat:"전체",camp:"전체",sort:"cat",open:null,loaded:false,sel:new Set(),online:navigator.onLine};
 
 const $=s=>document.querySelector(s);
 function h(tag,attrs={},...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{})){if(v==null||v===false)continue;if(k==="class")e.className=v;else if(k.startsWith("on"))e.addEventListener(k.slice(2),v);else if(k==="text")e.textContent=v;else e.setAttribute(k,v===true?"":v)}for(const k of kids.flat()){if(k==null||k===false)continue;e.append(k instanceof Node?k:document.createTextNode(String(k)))}return e}
@@ -271,12 +273,23 @@ function render(){
 function filtered(){
   const q=S.q.trim().toLowerCase();
   return S.items.filter(i=>(S.cat==="전체"||i.cat===S.cat)&&(S.camp==="전체"||(i.camps||[]).includes(S.camp))&&(!q||[i.name,i.loc,i.note,i.cat,i.kind].join(" ").toLowerCase().includes(q)))
-    .sort((a,b)=>(CATS.indexOf(a.cat)-CATS.indexOf(b.cat))||String(a.name).localeCompare(String(b.name),"ko"));
+    .sort(SORTS[S.sort]||SORTS.cat);
 }
+const byName=(a,b)=>String(a.name).localeCompare(String(b.name),"ko");
+const ts=i=>Date.parse(i.updated_at||i.created_at||0)||0;
+const SORTS={
+  cat:(a,b)=>(CATS.indexOf(a.cat)-CATS.indexOf(b.cat))||byName(a,b),
+  updated:(a,b)=>ts(b)-ts(a)||byName(a,b),
+  name:byName,
+  low:(a,b)=>["out","low","unk","ok"].indexOf(status(a))-["out","low","unk","ok"].indexOf(status(b))||byName(a,b)
+};
+const SORTL={cat:"분류순",updated:"최근 수정순",name:"이름순",low:"부족한 것부터"};
+function rel(t){const d=Date.now()-t;if(!t||d<0)return"";const m=Math.floor(d/60000);if(m<1)return"방금";if(m<60)return m+"분 전";const hh=Math.floor(m/60);if(hh<24)return hh+"시간 전";const dd=Math.floor(hh/24);if(dd<30)return dd+"일 전";return new Date(t).toLocaleDateString("ko-KR",{month:"numeric",day:"numeric"})}
 function toolsBar(redraw){
   const search=h("div",{class:"search"},
     h("input",{id:"q",type:"search",placeholder:"물품 이름, 보관 장소로 찾기",value:S.q,"aria-label":"검색",oninput:e=>{S.q=e.target.value;redraw()}}),
-    h("select",{id:"campSel","aria-label":"캠프",onchange:e=>{S.camp=e.target.value;redraw()}},...["전체",...CAMPS].map(c=>h("option",{value:c,selected:S.camp===c},c==="전체"?"모든 캠프":c))));
+    h("select",{id:"campSel","aria-label":"캠프",onchange:e=>{S.camp=e.target.value;redraw()}},...["전체",...CAMPS].map(c=>h("option",{value:c,selected:S.camp===c},c==="전체"?"모든 캠프":c))),
+    h("select",{id:"sortSel",class:"srt","aria-label":"정렬",onchange:e=>{S.sort=e.target.value;redraw()}},...Object.keys(SORTL).map(k=>h("option",{value:k,selected:S.sort===k},SORTL[k]))));
   const chips=h("div",{class:"chips",role:"group","aria-label":"분류"},...["전체",...CATS].map(c=>h("button",{class:"chip","aria-pressed":String(S.cat===c),onclick:()=>{S.cat=c;render()}},c)));
   return h("div",{class:"tools"},search,chips);
 }
@@ -308,7 +321,7 @@ function listRow(it){
   const name=h("input",{value:it.name||"","aria-label":"물품 이름",
     onkeydown:e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){e.target.value=it.name||"";e.target.blur()}},
     onchange:e=>saveName(it,e.target.value,e.target),onblur:afterEdit});
-  const sub=h("small",{},h("span",{class:"pill "+st,text:SLBL[st]}),it.dispose?h("span",{class:"pill dispose",text:"폐기"}):null,[it.kind,it.loc||"장소 미정"].filter(Boolean).join(" · "));
+  const sub=h("small",{},h("span",{class:"pill "+st,text:SLBL[st]}),it.dispose?h("span",{class:"pill dispose",text:"폐기"}):null,[it.kind,it.loc||"장소 미정"].filter(Boolean).join(" · "),S.sort==="updated"?h("span",{class:"when",text:" · "+rel(ts(it))+(it.updated_by?" "+it.updated_by:"")}):null);
   const qty=h("input",{type:"number",inputmode:"numeric",min:"0",placeholder:"?",value:it.qty==null?"":String(it.qty),"aria-label":it.name+" 수량",
     onkeydown:e=>{if(e.key==="Enter")e.target.blur()},onchange:e=>saveQty(it,e.target.value,e.target),onblur:afterEdit});
   let armed=false;const del=h("button",{class:"ib del",type:"button","aria-label":it.name+" 삭제",onclick:async()=>{
