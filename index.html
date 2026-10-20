@@ -53,7 +53,8 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background
 .stat b{font-family:var(--f-mono);font-size:14px;color:var(--fg);font-variant-numeric:tabular-nums}
 .stat.low b{color:var(--low)} .stat.out b{color:var(--out)}
 nav.tabs{display:flex;gap:4px}
-nav.tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:8px 2px 10px;font-weight:500;color:var(--muted);font-size:14px}
+nav.tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:8px 0 10px;font-weight:500;color:var(--muted);font-size:14px;white-space:nowrap}
+@media (max-width:420px){nav.tabs button{font-size:13px}}
 nav.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--tape)}
 nav.tabs .n{font-family:var(--f-mono);font-size:12px;margin-left:4px;color:var(--low)}
 
@@ -191,7 +192,7 @@ summary{cursor:pointer;font-weight:700;padding:4px 0}
 <script>
 const CATS=["문구","스티커","만들기 재료","인쇄·용지","운영 비품","간식·소모품","선물·보상","장비","위생·안전"];
 const CAMPS=["공통","히스토리즘","Storythm3.0"];
-const TABS=["list","stock","buy","log"];
+const TABS=["list","stock","buy","log","trash"];
 const CFG=window.SUPPLY_CONFIG||{};
 const S={sb:null,session:null,who:"",items:[],trash:[],logs:[],tab:"list",q:"",cat:"전체",camp:"전체",sort:"cat",open:null,loaded:false,sel:new Set(),online:navigator.onLine};
 
@@ -236,7 +237,7 @@ function shell(){
       h("div",{class:"stats",id:"stats"}),
       h("nav",{class:"tabs",role:"tablist"},
         h("button",{role:"tab",id:"tab-list"},"목록"),h("button",{role:"tab",id:"tab-stock"},"카드"),
-        h("button",{role:"tab",id:"tab-buy"},"구매 필요",h("span",{class:"n",id:"buyN"})),h("button",{role:"tab",id:"tab-log"},"기록",h("span",{class:"n",id:"trashN"}))))),
+        h("button",{role:"tab",id:"tab-buy"},"구매 필요",h("span",{class:"n",id:"buyN"})),h("button",{role:"tab",id:"tab-log"},"기록"),h("button",{role:"tab",id:"tab-trash"},"휴지통",h("span",{class:"n",id:"trashN"}))))),
     h("main",{},h("div",{class:"wrap",id:"view"},h("div",{class:"notice",text:"창고 목록을 불러오는 중이에요…"}))),
     h("button",{class:"fab",id:"fab",hidden:true,onclick:newItem},"+ 물품 추가"),
     h("div",{id:"sheetRoot"}));
@@ -259,7 +260,7 @@ function renderStats(){
     h("span",{class:"stat out"},"없음 ",h("b",{text:out})),
     h("span",{class:"stat"},"미확인 ",h("b",{text:unk})));
   $("#buyN").textContent=(low+out)?String(low+out):"";
-  const tn=$("#trashN");if(tn)tn.textContent=S.trash.length?"🗑"+S.trash.length:"";
+  const tn=$("#trashN");if(tn)tn.textContent=S.trash.length?String(S.trash.length):"";
 }
 function render(){
   if(!$("#view"))shell();
@@ -271,6 +272,7 @@ function render(){
   if(S.tab==="list")v.replaceChildren(...viewList());
   else if(S.tab==="stock")v.replaceChildren(...viewStock());
   else if(S.tab==="buy")v.replaceChildren(...viewBuy());
+  else if(S.tab==="trash")v.replaceChildren(...viewTrash());
   else v.replaceChildren(...viewLog());
 }
 function filtered(){
@@ -393,14 +395,14 @@ function trashRow(it){
     h("span",{class:"acts"},res,purge));
 }
 function viewTrash(){
-  if(!S.trash.length)return[];
-  return[h("div",{class:"sect-h"},h("h2",{text:"휴지통"}),h("span",{class:"meta",text:S.trash.length+"개 · 복원하면 목록으로 돌아와요"})),
-    h("div",{class:"list trash"},...S.trash.map(trashRow)),h("div",{style:"height:18px"})];
+  const head=h("div",{class:"sect-h"},h("h2",{text:"휴지통"}),h("span",{class:"meta",text:S.trash.length?S.trash.length+"개 · 복원하면 목록으로 돌아와요":"삭제한 물품이 여기에 모여요"}));
+  if(!S.trash.length)return[head,h("div",{class:"empty"},h("h3",{text:"휴지통이 비어 있어요"}),h("div",{text:"목록에서 ✕를 누르면 여기로 와요. 복원하면 수량·사진 그대로 돌아갑니다."}))];
+  return[head,h("div",{class:"hint",text:"누가 언제 지웠는지 각 줄에 남아요. 영구 삭제는 두 번 눌러야 하고, 기록 탭에도 남습니다."}),h("div",{class:"list trash"},...S.trash.map(trashRow))];
 }
 function viewLog(){
   const head=h("div",{class:"sect-h"},h("h2",{text:"입출고 기록"}),h("span",{class:"meta",text:"최근 200건"}));
-  if(!S.logs.length)return[...viewTrash(),head,h("div",{class:"empty"},h("h3",{text:"아직 기록이 없어요"}),h("div",{text:"수량을 바꾸면 여기에 쌓여요."}))];
-  return[...viewTrash(),head,h("div",{class:"list"},...S.logs.map(l=>logRow(l,true)))];
+  if(!S.logs.length)return[head,h("div",{class:"empty"},h("h3",{text:"아직 기록이 없어요"}),h("div",{text:"수량을 바꾸면 여기에 쌓여요."}))];
+  return[head,h("div",{class:"list"},...S.logs.map(l=>logRow(l,true)))];
 }
 
 /* ---------- sheet ---------- */
