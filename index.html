@@ -220,6 +220,7 @@ function toast(msg){const t=h("div",{class:"toast",role:"status",text:msg});docu
 function status(it){const q=it.qty;if(q==null||q==="")return"unk";if(q<=0)return"out";if(it.min==null||it.min==="")return"has";if(q<it.min)return"low";return"ok"}
 const SLBL={ok:"충분",low:"부족",out:"없음",unk:"미확인",has:"재고 있음"};
 const OSTAT={planned:"구매 예정",ordered:"주문 완료",received:"입고 완료"};
+function ordLive(it){return !!it.order_status&&(it.order_status!=="received"||Date.parse(it.order_at||0)>=Date.now()-7*864e5)}
 function ordText(it){if(!it.order_status)return"";return OSTAT[it.order_status]+(it.order_by?" · "+it.order_by:"")+(it.order_eta?" · "+it.order_eta.slice(5).replace("-","/")+" 예정":"")}
 function fmtDate(iso){if(!iso)return"";const d=new Date(iso);if(isNaN(d))return"";const p=n=>String(n).padStart(2,"0");return`${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`}
 function photoURL(path){if(!path)return null;return S.sb.storage.from(CFG.bucket||"photos").getPublicUrl(path).data.publicUrl}
@@ -346,7 +347,7 @@ function listRow(it){
   if(!S.edit){
     const thumb=h("button",{class:"lt",type:"button","aria-label":it.name+" 상세 열기",onclick:()=>openItem(it.id)},url?h("img",{src:url,alt:"",loading:"lazy"}):h("span",{text:(it.name||"?").slice(0,1)}));
     const nm=h("button",{class:"nm",type:"button",text:it.name||"",onclick:()=>openItem(it.id)});
-    const sub=h("small",{},h("span",{class:"pill "+st,text:SLBL[st]}),it.order_status?h("span",{class:"pill ord",text:OSTAT[it.order_status]}):null,it.dispose?h("span",{class:"pill dispose",text:"폐기"}):null,
+    const sub=h("small",{},h("span",{class:"pill "+st,text:SLBL[st]}),ordLive(it)?h("span",{class:"pill ord",text:OSTAT[it.order_status]}):null,it.dispose?h("span",{class:"pill dispose",text:"폐기"}):null,
       h("span",{class:"loc",text:it.loc||"장소 미정"}),it.kind?" · "+it.kind:"",S.sort==="updated"?h("span",{class:"when",text:" · "+rel(ts(it))+(it.updated_by?" "+it.updated_by:"")}):null);
     const q=h("div",{class:"lq ro"+(st==="unk"?" unk":""),"aria-label":"수량"},h("span",{text:it.qty==null?"?":String(it.qty)}),h("small",{text:it.unit||""}));
     const mv=h("button",{class:"ib mv",type:"button",onclick:()=>openItem(it.id,"move")},"입출고");
@@ -358,7 +359,7 @@ function listRow(it){
   const name=h("input",{value:it.name||"","aria-label":"물품 이름",
     onkeydown:e=>{if(e.key==="Enter")e.target.blur();if(e.key==="Escape"){e.target.value=it.name||"";e.target.blur()}},
     onchange:e=>saveName(it,e.target.value,e.target),onblur:afterEdit});
-  const sub=h("small",{},h("span",{class:"pill "+st,text:SLBL[st]}),it.order_status?h("span",{class:"pill ord",text:OSTAT[it.order_status]}):null,it.dispose?h("span",{class:"pill dispose",text:"폐기"}):null,h("span",{class:"loc",text:it.loc||"장소 미정"}),it.kind?" · "+it.kind:"",S.sort==="updated"?h("span",{class:"when",text:" · "+rel(ts(it))+(it.updated_by?" "+it.updated_by:"")}):null);
+  const sub=h("small",{},h("span",{class:"pill "+st,text:SLBL[st]}),ordLive(it)?h("span",{class:"pill ord",text:OSTAT[it.order_status]}):null,it.dispose?h("span",{class:"pill dispose",text:"폐기"}):null,h("span",{class:"loc",text:it.loc||"장소 미정"}),it.kind?" · "+it.kind:"",S.sort==="updated"?h("span",{class:"when",text:" · "+rel(ts(it))+(it.updated_by?" "+it.updated_by:"")}):null);
   const qty=h("input",{type:"number",inputmode:"numeric",min:"0",placeholder:"?",value:it.qty==null?"":String(it.qty),"aria-label":it.name+" 수량",
     onkeydown:e=>{if(e.key==="Enter")e.target.blur()},onchange:e=>saveQty(it,e.target.value,e.target),onblur:afterEdit});
   let armed=false;const del=h("button",{class:"ib del",type:"button","aria-label":it.name+" 삭제",onclick:async()=>{
@@ -400,7 +401,10 @@ function ordCtl(i){
 }
 function viewBuy(){
   const need=S.items.filter(i=>["out","low"].includes(status(i))).sort((a,b)=>(status(a)==="out"?0:1)-(status(b)==="out"?0:1));
-  const ordering=S.items.filter(i=>i.order_status&&!need.includes(i)).sort((a,b)=>Date.parse(b.order_at||0)-Date.parse(a.order_at||0));
+  const byAt=(a,b)=>Date.parse(b.order_at||0)-Date.parse(a.order_at||0);
+  const ordering=S.items.filter(i=>(i.order_status==="planned"||i.order_status==="ordered")&&!need.includes(i)).sort(byAt);
+  const RECV_DAYS=7,recvCut=Date.now()-RECV_DAYS*864e5;
+  const recv=S.items.filter(i=>i.order_status==="received"&&!need.includes(i)&&Date.parse(i.order_at||0)>=recvCut).sort(byAt);
   const unk=S.items.filter(i=>status(i)==="unk"&&!i.order_status);
   const row=i=>{const st=status(i),gap=(i.min||0)-(i.qty||0);return h("div",{class:"row"},
       h("span",{class:"dot",style:`background:var(--${st==="has"?"unk":st})`}),
@@ -412,6 +416,7 @@ function viewBuy(){
     :h("div",{class:"empty"},h("h3",{text:"모두 충분해요"}),h("div",{text:"최소 수량보다 적은 물품이 생기면 여기에 모여요."}));
   const out=[h("div",{class:"hint",text:"오른쪽에서 구매 예정 → 주문 완료 → 입고 완료로 바꿔 두면 누가 언제 주문했는지 남고, 겹쳐서 주문하는 일을 막아요."}),head,list];
   if(ordering.length)out.push(h("div",{class:"sect-h"},h("h2",{text:`주문 진행 중 ${ordering.length}개`})),h("div",{class:"list"},...ordering.map(row)));
+  if(recv.length)out.push(h("div",{class:"sect-h",style:"opacity:.75"},h("h2",{text:`최근 입고 ${recv.length}개`})),h("div",{class:"meta",style:"margin:-4px 2px 8px",text:`입고 완료한 물품은 ${RECV_DAYS}일 동안만 여기 보이고 자동으로 사라져요.`}),h("div",{class:"list",style:"opacity:.75"},...recv.map(row)));
   if(unk.length)out.push(h("div",{class:"notice",text:`수량을 아직 세지 않은 물품이 ${unk.length}개 있어요. 목록 탭에서 ‘편집’을 켜고 수량 칸에 지금 개수를 적으면 상태가 표시돼요.`}));
   return out;
 }
